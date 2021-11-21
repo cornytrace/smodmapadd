@@ -1,0 +1,6 @@
+{
+  "title": "SMOD Mapadd",
+  "type": "tool",
+  "tags": ["fun"],
+  "ignore": ["*.git*"]
+}
