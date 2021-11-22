@@ -102,7 +102,8 @@ if SERVER then
             end
 
             if k == "lua" then
-                print_ma("Entity type "..k.." not yet supported")
+                print_mad("Calling mapadd func "..v["callfunc"])
+                SmodMapaddLua[v["callfunc"]]()
                 continue
             end
 
