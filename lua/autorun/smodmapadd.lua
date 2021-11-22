@@ -29,7 +29,7 @@ if SERVER then
             key = v["Key"]
             value = v["Value"]
             if key == "model" then
-                print_ma("Precaching model "..value)
+                print_mad("Precaching model "..value)
                 util.PrecacheModel(value)
             else
                 print_mad("Not precaching "..key.." "..value..", not supported by gmod.")
@@ -93,7 +93,11 @@ if SERVER then
             local v = UnpreserveOrder(v["Value"])
 
             if k == "event" then
-                print_ma("Entity type "..k.." not yet supported")
+                for i,ent in ipairs(ents.FindByName(v["targetname"])) do
+                    if IsValid(ent) then
+                        ent:Fire(v["action"],v["value"] or "", v["delaytime"] or 0)
+                    end
+                end
                 continue
             end
 
@@ -113,6 +117,11 @@ if SERVER then
             end
 
             if k == "sound" then
+                print_ma("Entity type "..k.." not yet supported")
+                continue
+            end
+
+            if k == "player" then
                 print_ma("Entity type "..k.." not yet supported")
                 continue
             end
@@ -180,7 +189,15 @@ if SERVER then
         if lf == nil then
             lf = file.Read("mapadd/"..mapname..".lua", "DATA")
             if lf then
-                CompileString(lf, "MapaddLua")()
+                print_ma("Running lua code for map...")
+                SmodMapaddLua = {}
+                lf = string.gsub(lf,"(function%s*)","%1 SmodMapaddLua.") -- prefix functions to avoid lua global pollution
+                RunString(lf, "SmodMapaddLua")
+                if MAPADDDEBUG then
+                    PrintTable(SmodMapaddLua)
+                end
+            else
+                print_mad("No lua file found for map")
             end
         end
 
