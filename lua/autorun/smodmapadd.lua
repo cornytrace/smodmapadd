@@ -1,4 +1,5 @@
 local MAPADDDEBUG = true
+local _R = debug.getregistry()
 
 if SERVER then
 
@@ -37,8 +38,115 @@ if SERVER then
         end
     end
 
-    local function HandleRandomSpawn(kv)
+    local function StrToVec(posstr)
+        local pos = string.Split(posstr," ")
+        return Vector(pos[1],pos[2],pos[3])
+    end
 
+    -- {{Vector pos, number radius}}
+    local removenodes = {}
+    local nodes
+    local function GetRandomNodePosition()
+        for i,node in ipairs(nodes) do
+            for _,removenodes in ipairs(removenodes) do
+                if node.pos:Distance(removenodes[1]) < removenodes[2] then
+                    table.remove(nodes,i)
+                end
+            end
+        end
+        if #nodes > 0 then
+            local choice = math.random(#nodes)
+            local pos = nodes[choice].pos
+            table.remove(nodes,choice)
+            return pos
+        else
+            return nil 
+        end
+    end
+
+    local function HandleRandomSpawn(kv)
+        if _R.Nodegraph == nil then
+            print_mad("Nodegraph library not found, unable to handle random spawns")
+            return
+        elseif nodes == nil then
+            print_mad("Reading nodegraph")
+            nodes = _R.Nodegraph.Read():GetNodes()
+        end
+        
+        for i, v in ipairs(kv) do
+            key = v["Key"]
+            value = UnpreserveOrder(v["Value"])
+
+            if(key == "removenodes") then
+                local vec = StrToVec(value["origin"])
+                local radius = value["radius"]
+                table.insert(removenodes,{vec,radius})
+                continue
+            end
+
+            if(key == "removeairnodes") then
+                print_ma("removeairnodes not implemented")
+                continue
+            end
+
+            if GetRandomNodePosition() == nil then
+                print_ma("Error: No ai nodes left to randomspawn")
+                return 
+            end
+
+            for i=1,value["count"] do
+                local ent = ents.Create(key)
+                if not IsValid(ent) then continue end
+
+                local pos = GetRandomNodePosition()
+                ent:SetPos(pos)
+
+                print_mad("Creating "..key.." "..i.." of "..value["count"].." at "..tostring(pos))
+
+                if value["model"] then
+                    ent:SetModel(value["model"])
+                end
+
+                if value["targetname"] then
+                    ent:SetKeyValue("targetname", value["targetname"])
+                end
+
+                if value["values"] then
+                    local values = string.Split(value["values"]," ")
+                    for i=1,#values,2 do
+                        ent:SetKeyValue(values[i],values[i+1])
+                    end
+                end
+
+                if v["stabilize"] then
+                    print_ma("stabilize keyword not yet implemented")
+                end
+
+                if v["patrol"] then
+                    ent:Fire("StartPatrolling")
+                end
+
+                if v["weapon"] then
+                    ent:SetKeyValue("additionalequipment", v["weapon"])
+                else
+                    if ent:IsNPC() then
+                        local weapons = {"weapon_smg1", "weapon_ar2", "weapon_shotgun"}
+                        if key == "npc_citizen" or key == "npc_metropolice" then
+                            table.insert(weapons,"weapon_pistol")
+                        end
+                        ent:SetKeyValue("additionalequipment", weapons[math.random(#weapons)])
+                    end
+                end
+
+                if v["grenade"] then
+                    ent:SetKeyValue("NumGrenades", v["grenade"])
+                end
+
+                ent:Spawn()
+                ent:Activate()
+            end
+
+        end
     end
 
     smodRelTarget = {a={"npc_antlion","npc_antlionguard"},
@@ -66,7 +174,7 @@ if SERVER then
     -- todo?: add relations to npcs spawned after this function is ran
     local function smodSetRelation(ent, rel)
         -- ent is class name string
-        local targets
+        local targets = {}
         if type(ent) == string then
             targets = ents.FindByClass(ent)
         elseif IsValid(ent) then
@@ -113,7 +221,22 @@ if SERVER then
             end
 
             if k == "removeentity" then
-                print_ma("Entity type "..k.." not yet supported")
+                if v["classname"] then
+                    for i,ent in ipairs(ents.FindByClass(v["classname"])) do
+                        if v["radius"] == nil or ent:GetPos():Distance(StrToVec(v["origin"])) < tonumber(v["radius"]) then
+                            print_mad("Removing "..v["classname"])
+                            ent:Remove()
+                        end
+                    end
+                end
+                if v["targetname"] then
+                    for i,ent in ipairs(ents.FindByName(v["targetname"])) do
+                        if v["radius"] == nil or ent:GetPos():Distance(StrToVec(v["origin"])) < tonumber(v["radius"]) then
+                            print_mad("Removing "..v["targetname"])
+                            ent:Remove()
+                        end
+                    end
+                end
                 continue
             end
 
@@ -134,14 +257,12 @@ if SERVER then
                 continue 
             end
             if v["origin"] then
-                pos = string.Split(v["origin"], " ")
-                pos = Vector(pos[1],pos[2],pos[3])
+                local pos = StrToVec(v["origin"])
                 ent:SetPos(pos)
             end
             if v["angle"] then
-                ang = string.Split(v["angle"], " ")
-                ang = Angle(ang[1], ang[2], ang[3])
-                ent:SetAngles(ang)
+                local ang = string.Split(v["angle"], " ")
+                ent:SetAngles(Angle(ang[1], ang[2], ang[3]))
             end
             if v["keyvalues"] then
                 for k,v in pairs(v["keyvalues"]) do 
@@ -203,8 +324,13 @@ if SERVER then
         end
 
         print_ma("Loading mapadd file for current map...")
-
-        txt = string.gsub(txt, "(\r\n[ \t]*\"[%w_]+\")[ \t]*(\r\n[ \t]*[^{ \t])", "%1 \"true\"%2") -- repair keys without values
+        
+        -- repair keys without values
+        local novalue = {"alwaysthink", "freeze", "longrange", "patrol", "patrolrandom"}
+        for _,v in ipairs(novalue) do
+            txt = string.gsub(txt, "(\""..v.."\")", "%1 \"1\"") 
+        end
+        
         if MAPADDDEBUG then
             file.Write("mapadd/"..mapname..".debug.txt", txt)
         end
