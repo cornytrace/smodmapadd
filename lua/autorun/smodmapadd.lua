@@ -2,6 +2,10 @@ local MAPADDDEBUG = true
 local _R = debug.getregistry()
 
 if SERVER then
+    SmodMapAddisPlayerSpawned = SmodMapAddisPlayerSpawned or false
+    SmodMapAddisPlayerSpawning = SmodMapAddisPlayerSpawning or false
+    local SmodMapAddHandleDelayed = {}
+    local smod_strings = {}
 
     local function print_ma(text)
         print("[mapadd] "..text)
@@ -41,6 +45,11 @@ if SERVER then
     local function StrToVec(posstr)
         local pos = string.Split(posstr," ")
         return Vector(pos[1],pos[2],pos[3])
+    end
+
+    local function StrToAng(posstr)
+        local pos = string.Split(posstr," ")
+        return Angle(pos[1],pos[2],pos[3])
     end
 
     -- {{Vector pos, number radius}}
@@ -195,10 +204,10 @@ if SERVER then
         end
     end
 
-    local function HandleEntities(key, value)
-        for i,v in ipairs(value) do
-            local k = v["Key"]
-            local v = UnpreserveOrder(v["Value"])
+    local function HandleEntities(value)
+        for i,section in ipairs(value) do
+            local k = section["Key"]
+            local v = UnpreserveOrder(section["Value"])
 
             if k == "event" then
                 for i,ent in ipairs(ents.FindByName(v["targetname"])) do
@@ -241,12 +250,60 @@ if SERVER then
             end
 
             if k == "sound" then
-                print_ma("Entity type "..k.." not yet supported")
+                if v["targetname"] then
+                    for i,ent in ipairs(ents.FindByName(v["targetname"])) do
+                        ent:EmitSound(v["soundname"])
+                    end
+                elseif v["origin"] then
+                    EmitSound(v["soundname"],v["origin"],0)
+                end
                 continue
             end
 
             if k == "player" then
-                print_ma("Entity type "..k.." not yet supported")
+                if not SmodMapAddisPlayerSpawning then
+                    print_mad("Deferring player section until after first player spawns")
+                    table.insert(SmodMapAddHandleDelayed,section)
+                    continue
+                end
+                local players = player.GetHumans()
+                print_mad("Found "..#players.." players")
+                for i,ply in ipairs(players) do
+                    if v["origin"] then
+                        ply:SetPos(StrToVec(v["origin"]))
+                    end
+                    if v["angle"] then
+                        ply:SetEyeAngles(StrToAng(v["angle"]))
+                    end
+                    if v["fadein"] then
+                        ply:ScreenFade(SCREENFADE.IN,color_black,v["fadein"],0)
+                    end
+                    if v["fadeout"] then
+                        ply:ScreenFade(SCREENFADE.OUT,color_black,v["fadeout"],0)
+                    end
+                    if v["message"] then
+                        local msg = string.gsub(v["message"],"#[%w_]*",function(match) 
+                            lmatch = string.sub(string.lower(match),2)
+                            if smod_strings and smod_strings[lmatch] ~= nil then 
+                                return smod_strings[lmatch] 
+                            else 
+                                return match 
+                            end
+                        end)
+                        local delay = 0.5
+                        -- initial spawn, so delay needs to be longer or message is gone before first scene draw
+                        if not SmodMapAddisPlayerSpawned then
+                            delay = 2
+                        end
+                        timer.Simple(delay,function() PrintMessage(HUD_PRINTCENTER, msg) end)
+                    end
+                    if v["music"] then
+                        ply:SendLua("surface.PlaySound(\""..v["music"].."\")")
+                    end
+                    if v["kill"] then
+                        ply:Kill()
+                    end
+                end
                 continue
             end
 
@@ -323,13 +380,28 @@ if SERVER then
             end
         end
 
+        local strfile = file.Read("resource/smod_english.txt", "GAME")
+        if strfile ~= nil then
+            print_ma("Loading smod strings")
+            local strings = util.KeyValuesToTable(strfile, true, false)
+            if strings ~= nil then
+                smod_strings = strings["tokens"]
+            else
+                print_ma("Parsing resource/smod_english.txt failed! Check if the file is saved in UTF-8")
+            end
+        else
+            print_ma("Cannot load resource/smod_english.txt, string localization not available")
+        end
+
         print_ma("Loading mapadd file for current map...")
         
         -- repair keys without values
-        local novalue = {"alwaysthink", "freeze", "longrange", "patrol", "patrolrandom"}
+        local novalue = {"alwaysthink", "freeze", "longrange", "patrol", "patrolrandom", "activate"}
         for _,v in ipairs(novalue) do
             txt = string.gsub(txt, "(\""..v.."\")", "%1 \"1\"") 
         end
+
+        txt = string.gsub(txt, "(\r?\n[ \t]*\"kill\")([ \t]*\r?\n)", "%1 \"1\"%2") -- kill is not only use as key without value, but also as targetname etc.
         
         if MAPADDDEBUG then
             file.Write("mapadd/"..mapname..".debug.txt", txt)
@@ -346,7 +418,7 @@ if SERVER then
             elseif key == "randomspawn" then
                 HandleRandomSpawn(value)
             elseif key == "entities" then
-                HandleEntities(key,value)
+                HandleEntities(value)
             end
         end
     end
@@ -358,7 +430,7 @@ if SERVER then
             local key = string.lower(v["Key"])
             local value = v["Value"]
             if key == keyname then
-                HandleEntities(labelname, value)
+                HandleEntities(value)
                 return
             end
         end
@@ -372,4 +444,13 @@ if SERVER then
         LoadMapAdd()
     end
 
+    
+    hook.Remove("PlayerSpawn", "smodmapadd")
+    hook.Add("PlayerSpawn", "smodmapadd", function(ply)
+        SmodMapAddisPlayerSpawning = true
+        print_mad("Handling deferred sections")
+        HandleEntities(SmodMapAddHandleDelayed)
+        hook.Remove("PlayerSpawn", "smodmapadd")
+        SmodMapAddisPlayerSpawned = true
+    end)
 end
