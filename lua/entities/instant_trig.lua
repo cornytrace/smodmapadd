@@ -17,6 +17,9 @@ function ENT:Think()
                 self:Trigger()
             end
         end
+        if #entities == 0 then
+            self:Trigger()
+        end
     end
 
     if self.radius then 
