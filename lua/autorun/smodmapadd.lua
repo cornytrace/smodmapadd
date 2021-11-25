@@ -37,7 +37,7 @@ if SERVER then
                 print_mad("Precaching model "..value)
                 util.PrecacheModel(value)
             else
-                print_mad("Not precaching "..key.." "..value..", not supported by gmod.")
+                --print_mad("Not precaching "..key.." "..value..", not supported by gmod.")
             end
         end
     end
@@ -73,6 +73,50 @@ if SERVER then
         end
     end
 
+    local function SmodFixupClassname(classname)
+        local testent = ents.Create(classname)
+        if not IsValid(testent) then
+            for _,v in ipairs({"npc_combine_e","npc_combine_ace", "npc_combine_c", "npc_combine_p"}) do
+                if v == classname then
+                    return "npc_combine_s"
+                end
+            end
+            for _,v in ipairs({"npc_laser_turret", "npc_f_laser_turret", "npc_rocket_turret", "npc_f_rocket_turret", "npc_f_crossbow_turret", "npc_f_turret_floor"}) do
+                if v == classname then
+                    return "npc_turret_floor"
+                end
+            end
+            if classname == "npc_kscanner" then
+                return "npc_scanner"
+            end
+            if classname == "weapon_ak47" then
+                return "weapon_ak-47"
+            end
+        else
+            testent:Remove()
+        end
+        return classname
+    end
+
+    local function SmodEntsCreate(classname)
+        local ent = ents.Create(SmodFixupClassname(classname))
+        if classname == "npc_combine_p" then
+            ent:SetModel("models/combine_soldier_prisonguard.mdl")
+        end
+        if string.StartWith(classname,"npc_f_") then
+            for k,v in pairs(list.get("NPC")) do
+                if v["Category"] == "Humans + Resistance" then
+                    ent:AddRelationship(k.." DT_LI 99")
+                elseif v["Category"] == "Zombies + Enemy Aliens" then
+                    ent:AddRelationship(k.." DT_HT 99")
+                elseif v["Category"] == "Combine" then
+                    ent:AddRelationship(k.." DT_HT 99")
+                end
+            end
+        end
+        return ent
+    end
+
     local function HandleRandomSpawn(kv)
         if _R.Nodegraph == nil then
             print_mad("Nodegraph library not found, unable to handle random spawns")
@@ -104,7 +148,7 @@ if SERVER then
             end
 
             for i=1,value["count"] do
-                local ent = ents.Create(key)
+                local ent = SmodEntsCreate(key)
                 if not IsValid(ent) then continue end
 
                 local pos = GetRandomNodePosition()
@@ -121,34 +165,28 @@ if SERVER then
                 end
 
                 if value["values"] then
-                    local values = string.Split(value["values"]," ")
+                    local values = string.Replace(value["values"],"\t"," ")
+                    values = string.Split(values, " ")
                     for i=1,#values,2 do
                         ent:SetKeyValue(values[i],values[i+1])
                     end
                 end
 
-                if v["stabilize"] then
+                if value["stabilize"] then
                     print_ma("stabilize keyword not yet implemented")
                 end
 
-                if v["patrol"] then
+                if value["patrol"] then
                     ent:Fire("StartPatrolling")
                 end
 
-                if v["weapon"] then
-                    ent:SetKeyValue("additionalequipment", v["weapon"])
-                else
-                    if ent:IsNPC() then
-                        local weapons = {"weapon_smg1", "weapon_ar2", "weapon_shotgun"}
-                        if key == "npc_citizen" or key == "npc_metropolice" then
-                            table.insert(weapons,"weapon_pistol")
-                        end
-                        ent:SetKeyValue("additionalequipment", weapons[math.random(#weapons)])
-                    end
+                if value["weapon"] then
+                    local weapon = SmodFixupClassname(value["weapon"])
+                    ent:SetKeyValue("additionalequipment", weapon)
                 end
 
-                if v["grenade"] then
-                    ent:SetKeyValue("NumGrenades", v["grenade"])
+                if value["grenade"] then
+                    ent:SetKeyValue("NumGrenades", value["grenade"])
                 end
 
                 ent:Spawn()
@@ -210,7 +248,11 @@ if SERVER then
             local v = UnpreserveOrder(section["Value"])
 
             if k == "event" then
-                for i,ent in ipairs(ents.FindByName(v["targetname"])) do
+                local entities = ents.FindByName(v["targetname"])
+                if #entities == 0 then
+                    print_ma("Warning: Firing event "..v["action"].." on non existent "..v["targetname"])
+                end
+                for i,ent in ipairs(entities) do
                     if IsValid(ent) then
                         ent:Fire(v["action"],v["value"] or "", v["delaytime"] or 0)
                     end
@@ -308,7 +350,7 @@ if SERVER then
             end
 
             print_mad("Spawning "..k.." at "..(v["origin"] or "0 0 0"))
-            local ent = ents.Create(k)
+            local ent = SmodEntsCreate(k)
             if not IsValid(ent) then 
                 print_ma("Spawning "..k.." failed!")
                 continue 
@@ -323,6 +365,9 @@ if SERVER then
             end
             if v["keyvalues"] then
                 for k,v in pairs(v["keyvalues"]) do 
+                    if k == "additionalequipment" then
+                        v = SmodFixupClassname(v)
+                    end
                     ent:SetKeyValue(k,v)
                 end
             end
@@ -348,6 +393,7 @@ if SERVER then
             ent:Spawn()
             ent:Activate()
         end
+        print_ma("Loading done")
     end
 
     local mapadd
