@@ -1,7 +1,8 @@
-HL2 = {}
+local HL2 = {}
 
 function HL2.GetDateMD()
-    return os.date("%m%d")
+    --return os.date("%m%d")
+    return "1225"
 end
 
 function HL2.CallMapaddLabel(labelname)
@@ -25,3 +26,9 @@ end
 function HL2.KeyValue(ent, key, value)
     ent:SetKeyValue(key, value)
 end
+
+local function print(...)
+    _G["print"]("[mapadd] ", ...)
+end
+
+return {print=print, HL2=HL2}

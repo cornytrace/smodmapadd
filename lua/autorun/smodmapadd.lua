@@ -167,7 +167,7 @@ if SERVER then
 
                 if value["model"] then
                     if file.Exists(value["model"], "GAME") then
-                    ent:SetModel(value["model"])
+                        ent:SetModel(value["model"])
                     else 
                         print_ma("Model not found: "..value["model"])
                     end
@@ -275,7 +275,16 @@ if SERVER then
 
             if k == "lua" then
                 print_mad("Calling mapadd func "..v["callfunc"])
-                SmodMapaddLua[v["callfunc"]]()
+                local func = SmodMapaddLua[v["callfunc"]]
+                if func == nil then
+                    print_ma("Error: Function "..v["callfunc"].." does not exist!")
+                    continue
+                end
+                setfenv(func, SmodMapaddLua)
+                local _,err = pcall(func)
+                if err then
+                    print_ma("Error while running mapadd func "..v["callfunc"]..": "..err)
+                end
                 continue
             end
 
@@ -431,17 +440,20 @@ if SERVER then
         local lf = file.Read("mapadd/"..mapname..".lua", "GAME")
         if lf == nil then
             lf = file.Read("mapadd/"..mapname..".lua", "DATA")
-            if lf then
-                print_ma("Running lua code for map...")
-                SmodMapaddLua = {}
-                lf = string.gsub(lf,"(function%s*)","%1 SmodMapaddLua.") -- prefix functions to avoid lua global pollution
-                RunString(lf, "SmodMapaddLua")
-                if MAPADDDEBUG then
-                    PrintTable(SmodMapaddLua)
-                end
-            else
-                print_mad("No lua file found for map")
+        end
+        if lf then
+            print_ma("Running lua code for map...")
+            SmodMapaddLua = include("smodluacompat.lua")
+            local loadfunc = CompileString(lf,"SmodMapaddLua")
+            setfenv(loadfunc,SmodMapaddLua)
+            local _,err = pcall(loadfunc)
+            if err then
+                print_ma("Error while calling mapadd lua: "..err)
+            elseif MAPADDDEBUG then
+                PrintTable(SmodMapaddLua)
             end
+        else
+            print_mad("No lua file found for map")
         end
 
         local strfile = file.Read("resource/smod_english.txt", "GAME")
@@ -513,8 +525,8 @@ if SERVER then
     hook.Add("PlayerSpawn", "smodmapadd", function(ply)
         SmodMapAddisPlayerSpawning = true
         if #SmodMapAddHandleDelayed > 0 then
-        print_mad("Handling deferred sections")
-        HandleEntities(SmodMapAddHandleDelayed)
+            print_mad("Handling deferred sections")
+            HandleEntities(SmodMapAddHandleDelayed)
         end
         hook.Remove("PlayerSpawn", "smodmapadd")
         SmodMapAddisPlayerSpawned = true
