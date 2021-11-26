@@ -2,6 +2,8 @@ local MAPADDDEBUG = true
 local _R = debug.getregistry()
 
 if SERVER then
+    include("snlparser.lua")
+
     SmodMapAddisPlayerSpawned = SmodMapAddisPlayerSpawned or false
     SmodMapAddisPlayerSpawning = SmodMapAddisPlayerSpawning or false
     local SmodMapAddHandleDelayed = {}
@@ -124,6 +126,13 @@ if SERVER then
         elseif nodes == nil then
             print_mad("Reading nodegraph")
             nodes = _R.Nodegraph.Read():GetNodes()
+            if #nodes == 0 then
+                PrintMessage(HUD_PRINTTALK, "[smodmapadd] No ai nodegraph found!")
+                if file.Exists("mapadd/nodes/"..game.GetMap()..".snl", "GAME") then
+                    PrintMessage(HUD_PRINTTALK, "[smodmapadd] Generating nodegraph from SMOD .snl file...")
+                    ApplySnl()
+                end
+            end
         end
         
         for i, v in ipairs(kv) do
