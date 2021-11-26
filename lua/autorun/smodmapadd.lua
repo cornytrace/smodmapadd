@@ -166,7 +166,11 @@ if SERVER then
                 print_mad("Creating "..key.." "..i.." of "..value["count"].." at "..tostring(pos))
 
                 if value["model"] then
+                    if file.Exists(value["model"], "GAME") then
                     ent:SetModel(value["model"])
+                    else 
+                        print_ma("Model not found: "..value["model"])
+                    end
                 end
 
                 if value["targetname"] then
@@ -376,6 +380,11 @@ if SERVER then
                 for k,v in pairs(v["keyvalues"]) do 
                     if k == "additionalequipment" then
                         v = SmodFixupClassname(v)
+                    elseif k == "model" then
+                        if not file.Exists(v, "GAME") then
+                            print_ma("Model not found: "..v)
+                            continue
+                        end
                     end
                     ent:SetKeyValue(k,v)
                 end
@@ -456,7 +465,7 @@ if SERVER then
             txt = string.gsub(txt, "(\""..v.."\")", "%1 \"1\"") 
         end
 
-        txt = string.gsub(txt, "(\r?\n[ \t]*\"kill\")([ \t]*\r?\n)", "%1 \"1\"%2") -- kill is not only use as key without value, but also as targetname etc.
+        txt = string.gsub(txt, "(\r?\n[ \t]*\"kill\")([ \t]*\r?\n)", "%1 \"1\"%2") -- kill is not only used as key without value, but also as targetname etc.
         
         if MAPADDDEBUG then
             file.Write("mapadd/"..mapname..".debug.txt", txt)
@@ -503,8 +512,10 @@ if SERVER then
     hook.Remove("PlayerSpawn", "smodmapadd")
     hook.Add("PlayerSpawn", "smodmapadd", function(ply)
         SmodMapAddisPlayerSpawning = true
+        if #SmodMapAddHandleDelayed > 0 then
         print_mad("Handling deferred sections")
         HandleEntities(SmodMapAddHandleDelayed)
+        end
         hook.Remove("PlayerSpawn", "smodmapadd")
         SmodMapAddisPlayerSpawned = true
     end)
