@@ -82,12 +82,12 @@ function ApplySnl()
 
     local nodeoffset = #nodes + 1
     for i,node in ipairs(snlnodes) do
-        print("addnode "..node.pos[1].." "..node.type)
+        --print("addnode "..node.pos[1].." "..node.type)
         nodegraph:AddNode(node.pos,node.type,node.yaw)
     end
     for i,link in ipairs(snllinks) do
         if link.type == "L" then
-            print("addlink "..nodeoffset + link.src.." "..nodeoffset + link.dst)
+            --print("addlink "..nodeoffset + link.src.." "..nodeoffset + link.dst)
             nodegraph:AddLink(nodeoffset + link.src, nodeoffset + link.dst, link.move)
         elseif link.type == "I" then
             nodegraph:AddLink(nodeoffset + link.src, link.dst, link.move)

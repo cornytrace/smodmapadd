@@ -469,6 +469,8 @@ if SERVER then
     end
 
     function ParseMapadd()
+        if mapadd == nil then return end
+
         for i,v in ipairs(mapadd) do
             local key = string.lower(v["Key"])
             local value = v["Value"]
