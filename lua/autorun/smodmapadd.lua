@@ -1,4 +1,4 @@
-local MAPADDDEBUG = true
+MAPADDDEBUG = true
 local _R = debug.getregistry()
 
 if SERVER then
@@ -8,6 +8,7 @@ if SERVER then
     SmodMapAddisPlayerSpawning = SmodMapAddisPlayerSpawning or false
     local SmodMapAddHandleDelayed = {}
     local smod_strings = {}
+    local mapadd = {}
 
     local function print_ma(text)
         print("[mapadd] "..text)
@@ -78,18 +79,22 @@ if SERVER then
     local function SmodFixupClassname(classname)
         local testent = ents.Create(classname)
         if not IsValid(testent) then
-            for _,v in ipairs({"npc_combine_e","npc_combine_ace", "npc_combine_c", "npc_combine_p"}) do
+            classname = string.gsub(classname, "npc_f_", "npc_")
+            for _,v in ipairs({"npc_combine_e","npc_combine_ace", "npc_combine_c", "npc_combine_p", "npc_combine"}) do
                 if v == classname then
                     return "npc_combine_s"
                 end
             end
-            for _,v in ipairs({"npc_laser_turret", "npc_f_laser_turret", "npc_rocket_turret", "npc_f_rocket_turret", "npc_f_crossbow_turret", "npc_f_turret_floor"}) do
+            for _,v in ipairs({"npc_laser_turret", "npc_rocket_turret", "npc_crossbow_turret"}) do
                 if v == classname then
                     return "npc_turret_floor"
                 end
             end
             if classname == "npc_kscanner" then
                 return "npc_scanner"
+            end
+            if classname == "npc_zombie2" then
+                return "npc_zombie"
             end
             if classname == "weapon_ak47" then
                 return "weapon_ak-47"
@@ -100,19 +105,19 @@ if SERVER then
         return classname
     end
 
-    local function SmodEntsCreate(classname)
+    function SmodEntsCreate(classname)
         local ent = ents.Create(SmodFixupClassname(classname))
         if classname == "npc_combine_p" then
             ent:SetModel("models/combine_soldier_prisonguard.mdl")
         end
         if string.StartWith(classname,"npc_f_") then
-            for k,v in pairs(list.get("NPC")) do
+            for k,v in pairs(list.Get("NPC")) do
                 if v["Category"] == "Humans + Resistance" then
-                    ent:AddRelationship(k.." DT_LI 99")
+                    ent:AddRelationship(k.." D_LI 99")
                 elseif v["Category"] == "Zombies + Enemy Aliens" then
-                    ent:AddRelationship(k.." DT_HT 99")
+                    ent:AddRelationship(k.." D_HT 99")
                 elseif v["Category"] == "Combine" then
-                    ent:AddRelationship(k.." DT_HT 99")
+                    ent:AddRelationship(k.." D_HT 99")
                 end
             end
         end
@@ -280,7 +285,6 @@ if SERVER then
                     print_ma("Error: Function "..v["callfunc"].." does not exist!")
                     continue
                 end
-                setfenv(func, SmodMapaddLua)
                 local _,err = pcall(func)
                 if err then
                     print_ma("Error while running mapadd func "..v["callfunc"]..": "..err)
@@ -424,36 +428,14 @@ if SERVER then
     end
 
     local mapadd
-    local function LoadMapAdd()
+    local function LoadMapadd()
         SmodMapAddisGameLoaded = true
         local mapname = game.GetMap()
 
         local txt = file.Read("mapadd/"..mapname..".txt", "GAME")
         if txt == nil then
-            txt = file.Read("mapadd/"..mapname..".txt", "DATA")
-            if txt == nil then
-                print_ma("No mapadd file found for "..mapname)
-                return
-            end
-        end
-
-        local lf = file.Read("mapadd/"..mapname..".lua", "GAME")
-        if lf == nil then
-            lf = file.Read("mapadd/"..mapname..".lua", "DATA")
-        end
-        if lf then
-            print_ma("Running lua code for map...")
-            SmodMapaddLua = include("smodluacompat.lua")
-            local loadfunc = CompileString(lf,"SmodMapaddLua")
-            setfenv(loadfunc,SmodMapaddLua)
-            local _,err = pcall(loadfunc)
-            if err then
-                print_ma("Error while calling mapadd lua: "..err)
-            elseif MAPADDDEBUG then
-                PrintTable(SmodMapaddLua)
-            end
-        else
-            print_mad("No lua file found for map")
+            print_ma("No mapadd file found for "..mapname)
+            return
         end
 
         local strfile = file.Read("resource/smod_english.txt", "GAME")
@@ -484,7 +466,9 @@ if SERVER then
         end
 
         mapadd = util.KeyValuesToTablePreserveOrder("\"mapadd\" {"..txt.."}")
+    end
 
+    function ParseMapadd()
         for i,v in ipairs(mapadd) do
             local key = string.lower(v["Key"])
             local value = v["Value"]
@@ -496,6 +480,25 @@ if SERVER then
             elseif key == "entities" then
                 HandleEntities(value)
             end
+        end
+    end
+
+    function LoadMapaddLua()
+        local mapname = game.GetMap()
+        local lf = file.Read("mapadd/"..mapname..".lua", "GAME")
+        if lf then
+            print_ma("Running lua code for map...")
+            SmodMapaddLua = include("smodluacompat.lua")
+            local loadfunc = CompileString(lf,"mapadd/"..mapname..".lua")
+            setfenv(loadfunc,SmodMapaddLua)
+            local _,err = pcall(loadfunc)
+            if err then
+                print_ma("Error while calling mapadd lua: "..err)
+            elseif MAPADDDEBUG then
+                PrintTable(SmodMapaddLua)
+            end
+        else
+            print_mad("No lua file found for map")
         end
     end
 
@@ -514,16 +517,21 @@ if SERVER then
     end
 
     hook.Remove("InitPostEntity", "smodmapadd")
-    hook.Add("InitPostEntity", "smodmapadd", LoadMapAdd)
+    hook.Add("InitPostEntity", "smodmapadd", LoadMapadd)
 
     if MAPADDDEBUG and SmodMapAddisGameLoaded then
-        LoadMapAdd()
+        LoadMapadd()
+        LoadMapaddLua()
     end
 
     
     hook.Remove("PlayerSpawn", "smodmapadd")
     hook.Add("PlayerSpawn", "smodmapadd", function(ply)
         SmodMapAddisPlayerSpawning = true
+        if not SmodMapAddisPlayerSpawned then
+            LoadMapaddLua()
+            ParseMapadd()
+        end
         if #SmodMapAddHandleDelayed > 0 then
             print_mad("Handling deferred sections")
             HandleEntities(SmodMapAddHandleDelayed)
@@ -531,4 +539,13 @@ if SERVER then
         hook.Remove("PlayerSpawn", "smodmapadd")
         SmodMapAddisPlayerSpawned = true
     end)
+
+    local dummyents = {
+        "hostage_entity"
+    }
+    for i, cls in ipairs(dummyents) do
+        if scripted_ents.Get(cls) == nil then
+            scripted_ents.Register({Type="point"}, cls, false)
+        end
+    end
 end
